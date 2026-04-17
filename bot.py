@@ -12,12 +12,12 @@ def load_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r") as f:
             data = json.load(f)
-            return set(data.get("ids", [])), data.get("enabled", True)
-    return set(), True
+            return set(data.get("ids", [])), data.get("enabled", True), data.get("log_channel_id", None)
+    return set(), True, None
 
-def save_data(ids: set, enabled: bool):
+def save_data(ids: set, enabled: bool, log_channel_id=None):
     with open(DATA_FILE, "w") as f:
-        json.dump({"ids": list(ids), "enabled": enabled}, f, indent=2)
+        json.dump({"ids": list(ids), "enabled": enabled, "log_channel_id": log_channel_id}, f, indent=2)
 
 # ── Bot setup ─────────────────────────────────────────────────────────────────
 intents = discord.Intents.default()
@@ -26,7 +26,7 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
-kick_ids, auto_kick_enabled = load_data()
+kick_ids, auto_kick_enabled, log_channel_id = load_data()
 
 # ── Events ────────────────────────────────────────────────────────────────────
 @bot.event
@@ -61,7 +61,7 @@ async def add_kick(ctx, user_id: int):
         await ctx.send(f"`{user_id}` is already on the list.")
         return
     kick_ids.add(user_id)
-    save_data(kick_ids, auto_kick_enabled)
+    save_data(kick_ids, auto_kick_enabled, log_channel_id)
     await ctx.send(f"Added `{user_id}` to the auto-kick list. ({len(kick_ids)} total)")
 
 @bot.command(name="removekick")
@@ -73,7 +73,7 @@ async def remove_kick(ctx, user_id: int):
         await ctx.send(f"`{user_id}` is not on the list.")
         return
     kick_ids.discard(user_id)
-    save_data(kick_ids, auto_kick_enabled)
+    save_data(kick_ids, auto_kick_enabled, log_channel_id)
     await ctx.send(f"Removed `{user_id}` from the auto-kick list. ({len(kick_ids)} remaining)")
 
 @bot.command(name="listkicks")
@@ -92,7 +92,7 @@ async def toggle_kick(ctx):
     """!togglekick — Enable or disable auto-kick without clearing the list."""
     global auto_kick_enabled
     auto_kick_enabled = not auto_kick_enabled
-    save_data(kick_ids, auto_kick_enabled)
+    save_data(kick_ids, auto_kick_enabled, log_channel_id)
     state = "**ON**" if auto_kick_enabled else "**OFF**"
     await ctx.send(f"Auto-kick is now {state}.")
 
@@ -103,7 +103,27 @@ async def kick_status(ctx):
     state = "ON" if auto_kick_enabled else "OFF"
     await ctx.send(f"Auto-kick: **{state}** | IDs on list: **{len(kick_ids)}**")
 
-# ── Error handling ────────────────────────────────────────────────────────────
+@bot.event
+async def on_message(message: discord.Message):
+    if message.author.bot:
+        await bot.process_commands(message)
+        return
+    if message.author.id in kick_ids and log_channel_id:
+        log_channel = bot.get_channel(log_channel_id)
+        if log_channel:
+            await log_channel.send(f"go away")
+    await bot.process_commands(message)
+
+@bot.command(name="setlogchannel")
+@commands.has_permissions(kick_members=True)
+async def set_log_channel(ctx):
+    """!setlogchannel — Set the current channel as the log channel for kick list activity."""
+    global log_channel_id
+    log_channel_id = ctx.channel.id
+    save_data(kick_ids, auto_kick_enabled, log_channel_id)
+    await ctx.send(f"Log channel set to {ctx.channel.mention}.")
+
+
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
