@@ -116,6 +116,8 @@ async def on_command_error(ctx, error):
         raise error
 
 # ── Run ───────────────────────────────────────────────────────────────────────
-TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "MTQ5NDYwNTg4OTk3NjQwMTk3MA.GLMka0.Lgfs1ppzDwdpEp1h1uCnB8sfWbCNiG7DcU9Y60")
+TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
+if not TOKEN:
+    raise ValueError("Set the DISCORD_BOT_TOKEN environment variable before running.")
 
 bot.run(TOKEN)
